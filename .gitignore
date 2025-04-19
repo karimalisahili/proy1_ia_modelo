@@ -1,2 +1,4 @@
 /tensorflow_datasets
 /tmp
+rock_paper_scissors_cnn.h5
+/logs
