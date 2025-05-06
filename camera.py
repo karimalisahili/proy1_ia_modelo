@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from tensorflow.keras.models import load_model
 from PIL import Image
+import matplotlib.pyplot as plt
 
 CLASS_LABELS = {0: "rock", 1: "paper", 2: "scissors"}
 # Load the trained model
@@ -39,8 +40,21 @@ while True:
         print("Error: Failed to capture frame.")
         break
 
-    # Preprocess the frame
-    input_frame = preprocess_frame(frame)
+    # Define the region of interest (ROI) for the hand
+    height, width, _ = frame.shape
+    roi_x_start = width // 4
+    roi_y_start = height // 4
+    roi_x_end = roi_x_start + width // 2
+    roi_y_end = roi_y_start + height // 2
+
+    # Draw a rectangle on the frame to indicate the ROI
+    cv2.rectangle(frame, (roi_x_start, roi_y_start), (roi_x_end, roi_y_end), (0, 255, 0), 2)
+
+    # Crop the ROI from the frame
+    roi = frame[roi_y_start:roi_y_end, roi_x_start:roi_x_end]
+
+    # Preprocess the cropped ROI
+    input_frame = preprocess_frame(roi)
 
     # Make a prediction
     predictions = model.predict(input_frame)
@@ -52,7 +66,7 @@ while True:
     # Display the prediction on the frame
     cv2.putText(frame, f'Prediction: {label_name}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    # Show the frame
+    # Show the frame with the rectangle
     cv2.imshow('Rock Paper Scissors - Real-Time', frame)
 
     # Break the loop if 'q' is pressed
