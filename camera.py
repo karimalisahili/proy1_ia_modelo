@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 import mediapipe as mp
 from tensorflow.keras.models import load_model
-from time import sleep
+import time
+import threading
 
 CLASS_LABELS = {0: "Piedra", 1: "Papel", 2: "Tijera"}
 # Load the trained model
@@ -16,6 +17,8 @@ hands = mp_hands.Hands(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5,
 )
+
+is_playing = False
 
 
 def get_label_name(class_index: int):
@@ -38,12 +41,29 @@ def image_to_landmarks_list(image: np.ndarray):
         return None
 
 
+def get_roi_shape(frame: np.ndarray):
+    """Get the shape of the region of interest (ROI)"""
+    height, width, _ = frame.shape
+    roi_x_start = width // 4
+    roi_y_start = height // 4
+    roi_x_end = roi_x_start + width // 2
+    roi_y_end = roi_y_start + height // 2
+    return (roi_x_start, roi_y_start, roi_x_end, roi_y_end)
+
+
+def draw_roi(frame: np.ndarray, roi_shape: tuple):
+    """Draw a rectangle on the frame to indicate the ROI"""
+    roi_x_start, roi_y_start, roi_x_end, roi_y_end = roi_shape
+    cv2.rectangle(
+        frame, (roi_x_start, roi_y_start), (roi_x_end, roi_y_end), (0, 255, 0), 2
+    )
+
+
 def preprocess_frame(frame: np.ndarray):
     """Function to preprocess the frame for the model"""
     landmarks = image_to_landmarks_list(frame)
     if landmarks is None:
         return None
-    print(landmarks)
     landmarks = np.array(landmarks, dtype=np.float32)
     landmarks = np.expand_dims(landmarks, axis=0)
     return landmarks
@@ -54,14 +74,6 @@ def detect_hand(frame: np.ndarray, roi_shape: tuple):
     roi_x_start, roi_y_start, roi_x_end, roi_y_end = roi_shape
     roi = frame[roi_y_start:roi_y_end, roi_x_start:roi_x_end]
     roi = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
-
-    # # (dev) draw hand landmarks
-    # results = hands.process(roi)
-    # if results.multi_hand_landmarks:
-    #     for hand_landmarks in results.multi_hand_landmarks:
-    #         mp.solutions.drawing_utils.draw_landmarks(
-    #             frame, hand_landmarks, mp_hands.HAND_CONNECTIONS
-    #         )
 
     # Convert to landmark list and pass to model
     input_frame = preprocess_frame(roi)
@@ -110,9 +122,42 @@ def draw_controls(frame: np.ndarray):
     )
 
 
+def countdown_and_detect(frame: np.ndarray, roi_shape: tuple):
+    """Function to handle the countdown in a separate thread"""
+    global is_playing
+    height, width, _ = frame.shape
+    for i in range(3, 0, -1):
+        start_time = time.time()
+        while time.time() - start_time < 1:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Failed to capture frame.")
+                return
+
+            # Draw the ROI rectangle
+            draw_roi(frame, roi_shape)
+
+            # Display countdown number on the frame
+            cv2.putText(
+                frame,
+                str(i),
+                (width // 2 - 20, height // 2),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                3,
+                (0, 0, 255),
+                5,
+            )
+            cv2.imshow("Rock Paper Scissors - Real-Time", frame)
+            cv2.waitKey(1)  # Allow OpenCV to process events
+
+    # After countdown, detect hand gesture
+    detect_hand(frame, roi_shape)
+    is_playing = False
+
+
 # Start video capture
 cap = cv2.VideoCapture(0)  # Use 0 for the default camera
-sleep(1)  # Allow time for the camera to warm up
+time.sleep(1)  # Allow time for the camera to warm up
 
 # Check if the camera opened successfully
 if not cap.isOpened():
@@ -129,26 +174,27 @@ while True:
         break
 
     # Define the region of interest (ROI) for the hand
-    height, width, _ = frame.shape
-    roi_x_start = width // 4
-    roi_y_start = height // 4
-    roi_x_end = roi_x_start + width // 2
-    roi_y_end = roi_y_start + height // 2
+    roi_shape = get_roi_shape(frame)
 
-    # Draw a rectangle on the frame to indicate the ROI
-    cv2.rectangle(
-        frame, (roi_x_start, roi_y_start), (roi_x_end, roi_y_end), (0, 255, 0), 2
-    )
+    key = cv2.waitKey(1) & 0xFF
 
-    detect_hand(frame, (roi_x_start, roi_y_start, roi_x_end, roi_y_end))
+    if key == ord(" ") and not is_playing:
+        # Start the countdown in a separate thread
+        is_playing = True
+        threading.Thread(
+            target=countdown_and_detect,
+            args=(frame.copy(), roi_shape),
+        ).start()
 
-    draw_controls(frame)
+    if not is_playing:
+        draw_controls(frame)
+        draw_roi(frame, roi_shape)
 
     # Show the frame with the rectangle
     cv2.imshow("Rock Paper Scissors - Real-Time", frame)
 
     # Break the loop if 'q' is pressed
-    if cv2.waitKey(1) & 0xFF in [ord("q"), ord("Q")]:
+    if key in [ord("q"), ord("Q")]:
         break
 
 # Release the capture and close windows
