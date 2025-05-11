@@ -19,7 +19,10 @@ hands = mp_hands.Hands(
     min_tracking_confidence=0.5,
 )
 
+# Game variables
 is_playing = False
+player_wins = 0
+ai_wins = 0
 
 
 def get_label_name(class_index: int):
@@ -107,7 +110,7 @@ def draw_controls(frame: np.ndarray):
         "Presiona Espacio para jugar",
         (10, 420),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.65,
         (255, 0, 0),
         2,
     )
@@ -117,8 +120,31 @@ def draw_controls(frame: np.ndarray):
         "Presiona 'q' para salir",
         (10, 460),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.65,
         (255, 0, 0),
+        2,
+    )
+
+
+def draw_game_state(frame: np.ndarray):
+    """Draw current game state"""
+    cv2.putText(
+        frame,
+        f"Victorias del Jugador: {player_wins}",
+        (10, 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (0, 255, 0),
+        2,
+    )
+
+    cv2.putText(
+        frame,
+        f"Victorias IA: {ai_wins}",
+        (10, 45),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (0, 255, 0),
         2,
     )
 
@@ -135,8 +161,9 @@ def countdown_and_detect(frame: np.ndarray, roi_shape: tuple):
                 print("Error: Failed to capture frame.")
                 return
 
-            # Draw the ROI rectangle
+            # Draw UI elements
             draw_roi(frame, roi_shape)
+            draw_game_state(frame)
 
             # Display countdown number on the frame
             cv2.putText(
@@ -182,6 +209,8 @@ def countdown_and_detect(frame: np.ndarray, roi_shape: tuple):
         computer_label = get_label_name(computer_choice)
 
         # Determine the winner
+        global player_wins
+        global ai_wins
         if prediction == computer_label:
             result = "Empate"
         elif (
@@ -190,8 +219,10 @@ def countdown_and_detect(frame: np.ndarray, roi_shape: tuple):
             or (prediction == "Tijera" and computer_label == "Papel")
         ):
             result = "Ganaste"
+            player_wins += 1
         else:
             result = "Perdiste"
+            ai_wins += 1
 
         # Display the result
         start_time = time.time()
@@ -226,11 +257,93 @@ def countdown_and_detect(frame: np.ndarray, roi_shape: tuple):
             cv2.imshow("Piedra Papel o Tijera", frame)
             cv2.waitKey(1)  # Allow OpenCV to process events
 
+        # End game condition
+        if player_wins == 3:
+            start_time = time.time()
+            while time.time() - start_time < 3:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Error: Failed to capture frame.")
+                    return
+
+                # Display the result message
+                cv2.putText(
+                    frame,
+                    "Ganaste esta ronda",
+                    (width // 2 - 315, height // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    2,
+                    (0, 255, 0),
+                    3,
+                )
+                cv2.putText(
+                    frame,
+                    f"Tus victorias: {player_wins}",
+                    (width // 2 - 225, height // 2 + 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 255, 0),
+                    2,
+                )
+                cv2.putText(
+                    frame,
+                    f"Victorias IA: {ai_wins}",
+                    (width // 2 - 225, height // 2 + 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 255, 0),
+                    2,
+                )
+                cv2.imshow("Piedra Papel o Tijera", frame)
+                cv2.waitKey(1)  # Allow OpenCV to process events
+        elif ai_wins == 3:
+            start_time = time.time()
+            while time.time() - start_time < 3:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Error: Failed to capture frame.")
+                    return
+
+                # Display the result message
+                cv2.putText(
+                    frame,
+                    "Perdiste esta ronda",
+                    (width // 2 - 315, height // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    2,
+                    (0, 0, 255),
+                    3,
+                )
+                cv2.putText(
+                    frame,
+                    f"Tus victorias: {player_wins}",
+                    (width // 2 - 225, height // 2 + 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2,
+                )
+                cv2.putText(
+                    frame,
+                    f"Victorias IA: {ai_wins}",
+                    (width // 2 - 225, height // 2 + 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),
+                    2,
+                )
+                cv2.imshow("Piedra Papel o Tijera", frame)
+                cv2.waitKey(1)  # Allow OpenCV to process events
+
+        if player_wins == 3 or ai_wins == 3:
+            player_wins = 0
+            ai_wins = 0
+
     is_playing = False
 
 
 # Start video capture
-cap = cv2.VideoCapture(0)  # Use 0 for the default camera
+cap = cv2.VideoCapture(0)
 time.sleep(1)  # Allow time for the camera to warm up
 
 # Check if the camera opened successfully
@@ -261,6 +374,7 @@ while True:
         ).start()
 
     if not is_playing:
+        draw_game_state(frame)
         draw_controls(frame)
         draw_roi(frame, roi_shape)
         cv2.imshow("Piedra Papel o Tijera", frame)
