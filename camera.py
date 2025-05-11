@@ -4,6 +4,7 @@ import mediapipe as mp
 from tensorflow.keras.models import load_model
 import time
 import threading
+import random
 
 CLASS_LABELS = {0: "Piedra", 1: "Papel", 2: "Tijera"}
 # Load the trained model
@@ -70,7 +71,7 @@ def preprocess_frame(frame: np.ndarray):
 
 
 def detect_hand(frame: np.ndarray, roi_shape: tuple):
-    """Detect hand in the frame and return the ROI"""
+    """Detect hand in the frame and return the Label"""
     roi_x_start, roi_y_start, roi_x_end, roi_y_end = roi_shape
     roi = frame[roi_y_start:roi_y_end, roi_x_start:roi_x_end]
     roi = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
@@ -141,17 +142,90 @@ def countdown_and_detect(frame: np.ndarray, roi_shape: tuple):
             cv2.putText(
                 frame,
                 str(i),
-                (width // 2 - 20, height // 2),
+                (width // 2 - 25, height // 2 + 35),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 3,
                 (0, 0, 255),
                 5,
             )
-            cv2.imshow("Rock Paper Scissors - Real-Time", frame)
-            cv2.waitKey(1)  # Allow OpenCV to process events
+            cv2.imshow("Piedra Papel o Tijera", frame)
+            cv2.waitKey(1)
 
     # After countdown, detect hand gesture
-    detect_hand(frame, roi_shape)
+    prediction = detect_hand(frame, roi_shape)
+    if prediction is None:
+        start_time = time.time()
+        while time.time() - start_time < 2:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Failed to capture frame.")
+                return
+
+            # Draw the ROI rectangle
+            draw_roi(frame, roi_shape)
+
+            # No se encontró una mano
+            cv2.putText(
+                frame,
+                "No se encontro una mano",
+                (width // 2 - 200, height // 2),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+            )
+            cv2.imshow("Piedra Papel o Tijera", frame)
+            cv2.waitKey(1)
+    else:
+        # Computer generates a random choice
+        computer_choice = random.randint(0, 2)
+        computer_label = get_label_name(computer_choice)
+
+        # Determine the winner
+        if prediction == computer_label:
+            result = "Empate"
+        elif (
+            (prediction == "Piedra" and computer_label == "Tijera")
+            or (prediction == "Papel" and computer_label == "Piedra")
+            or (prediction == "Tijera" and computer_label == "Papel")
+        ):
+            result = "Ganaste"
+        else:
+            result = "Perdiste"
+
+        # Display the result
+        start_time = time.time()
+        while time.time() - start_time < 3:
+            ret, frame = cap.read()
+            if not ret:
+                print("Error: Failed to capture frame.")
+                return
+
+            # Draw the ROI rectangle
+            draw_roi(frame, roi_shape)
+
+            # Display the result message
+            cv2.putText(
+                frame,
+                f"Tu: {prediction} | PC: {computer_label}",
+                (10, height - 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 0),
+                2,
+            )
+            cv2.putText(
+                frame,
+                result,
+                (width // 2 - 120, height // 2 + 35),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                2,
+                (0, 255, 0) if result == "Ganaste" else (0, 0, 255),
+                3,
+            )
+            cv2.imshow("Piedra Papel o Tijera", frame)
+            cv2.waitKey(1)  # Allow OpenCV to process events
+
     is_playing = False
 
 
@@ -189,9 +263,7 @@ while True:
     if not is_playing:
         draw_controls(frame)
         draw_roi(frame, roi_shape)
-
-    # Show the frame with the rectangle
-    cv2.imshow("Rock Paper Scissors - Real-Time", frame)
+        cv2.imshow("Piedra Papel o Tijera", frame)
 
     # Break the loop if 'q' is pressed
     if key in [ord("q"), ord("Q")]:
